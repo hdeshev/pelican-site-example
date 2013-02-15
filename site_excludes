@@ -1,0 +1,10 @@
+blog
+*.py
+*.pyc
+*.sh
+output
+server
+fabfile
+root.*
+todo.txt
+site_excludes
