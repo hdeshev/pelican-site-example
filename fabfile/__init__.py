@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 
 import os
+import re
+import datetime
 from glob import glob
-from fabric.api import *
+from fabric.api import env, local, lcd, puts, roles, execute, sudo
 from fabric.contrib.project import rsync_project
 from fabric.network import normalize
 from jinja2 import Environment, FileSystemLoader
 from itertools import chain
-from pprint import pprint
 from fnmatch import fnmatch
-from fabric.contrib.project import rsync_project
 
 env.use_ssh_config = True
 env.roledefs = {
@@ -27,6 +27,7 @@ TEMPLATE_CONTEXT = {
 }
 
 EXCLUDE_PATTERNS = [line.strip() for line in open("site_excludes", "r").readlines()]
+
 
 def root_site():
     local("rsync -a --delete --exclude-from=site_excludes  * %(output)s" %
@@ -70,6 +71,38 @@ def build():
     blog()
 
 
+def new_blog(title, slug=None, overwrite="no"):
+    if slug is None:
+        slug = slugify(title)
+
+    now = datetime.datetime.now()
+    month_part = now.strftime("%Y-%m")
+    post_date = now.strftime("%Y-%m-%d")
+
+    params = dict(
+        date=post_date,
+        title=title,
+        slug=slug,
+    )
+
+    out_file = "blog/content/{}/{}.md".format(month_part, slug)
+    local("mkdir -p '{}' || true".format(os.path.dirname(out_file)))
+    if not os.path.exists(out_file) or overwrite.lower() == "yes":
+        render("fabfile/blog-template.md", out_file, **params)
+    else:
+        print("{} already exists. Pass 'overwrite=yes' to destroy it.".
+                format(out_file))
+
+
+def slugify(text):
+    normalized = "".join([c.lower() if c.isalnum() else "-"
+            for c in text])
+    no_repetitions = re.sub(r"--+", "-", normalized)
+    clean_start = re.sub(r"^-+", "", no_repetitions)
+    clean_end = re.sub(r"-+$", "", clean_start)
+    return clean_end
+
+
 def render(template, destination, **kwargs):
     jenv = Environment(loader=FileSystemLoader(['.', os.path.join(THEME_PATH, "templates")]))
     params = dict(TEMPLATE_CONTEXT, **kwargs)
@@ -77,7 +110,7 @@ def render(template, destination, **kwargs):
     params["SITEURL"] = os.path.relpath(os.path.abspath("."), os.path.dirname(os.path.abspath(template)))
     text = jenv.get_template(template).render(params)
     with open(destination, "w") as output:
-        puts("Rendering: %s" % template)
+        puts("Rendering: {} to {}".format(template, destination))
         output.write(text.encode("utf-8"))
 
 
